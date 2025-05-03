@@ -54,7 +54,70 @@ def obj2array(obj_file):
 
     return verts, faces
 
+def obj2array_porter(obj_file):
+    #deal with Simon Porter's odd arrokoth .obj file
 
+
+    obj = np.genfromtxt(obj_file, dtype=[('vf', 'S2'), ('x', 'f8'), ('y', 'f8'), ('z', 'f8')])
+    # facesInd = np.where(obj['vf'] == b'f')[0]
+    vertsInd = np.where(obj['vf'] == b'v')[0]
+    normalsInd = np.where(obj['vf'] == b'vn')[0]
+
+    verts = np.column_stack([
+                            obj['x'][vertsInd], 
+                            obj['y'][vertsInd], 
+                            obj['z'][vertsInd]]).astype(np.float64)
+
+    normals = np.column_stack([
+                            obj['x'][normalsInd], 
+                            obj['y'][normalsInd], 
+                            obj['z'][normalsInd]]).astype(np.float64)
+
+    with open(obj_file, "r") as file:
+        lines = [line.strip() for line in file if line.startswith('f')]
+    
+    faces = np.zeros((len(lines),3)).astype(np.int32)
+    for i, line in enumerate(lines):
+        faces[i] = [int(x.split("/")[0]) for x in line.split()[1:]]
+
+    faces -= 1 #python = zero indexing
+
+    # quit()
+
+    return verts, faces, normals
+
+
+def obj2array_spencer(obj_file):
+    #deal with Spencer 2020 .obj arrokoth file
+
+
+    obj = np.genfromtxt(obj_file, dtype=[('vf', 'S2'), ('x', 'f8'), ('y', 'f8'), ('z', 'f8')])
+    # facesInd = np.where(obj['vf'] == b'f')[0]
+    vertsInd = np.where(obj['vf'] == b'v')[0]
+    normalsInd = np.where(obj['vf'] == b'vn')[0]
+
+    verts = np.column_stack([
+                            obj['x'][vertsInd], 
+                            obj['y'][vertsInd], 
+                            obj['z'][vertsInd]]).astype(np.float64)
+
+    normals = np.column_stack([
+                            obj['x'][normalsInd], 
+                            obj['y'][normalsInd], 
+                            obj['z'][normalsInd]]).astype(np.float64)
+
+    with open(obj_file, "r") as file:
+        lines = [line.strip() for line in file if line.startswith('f')]
+    
+    faces = np.zeros((len(lines),3)).astype(np.int32)
+    for i, line in enumerate(lines):
+        faces[i] = [int(x.split("//")[0]) for x in line.split()[1:]]
+
+    faces -= 1 #python = zero indexing
+
+    # quit()
+
+    return verts, faces, normals
 
 def get_face_midpoints(verts,faces):
     return np.mean(verts[faces], axis=1)
@@ -62,7 +125,6 @@ def get_face_midpoints(verts,faces):
 
 def reorder_faces(verts, faces):
     #change ordering of faces so all surface normals will point outwards
-
 
     #get direction to center of each face:
     face_directions = get_face_midpoints(verts,faces)
@@ -83,7 +145,6 @@ def reorder_faces(verts, faces):
     dot_products = np.sum(face_directions * face_normals, axis=1)
     faces_to_flip = np.where(dot_products < 0)[0]
     faces[faces_to_flip, [1, 2]] = faces[faces_to_flip, [2, 1]]
-
     return faces
 
 def get_face_normals(verts, faces):
@@ -101,9 +162,41 @@ def get_face_normals(verts, faces):
 
     # Ensure normal points outward
     dot_products = np.sum(face_directions*face_normals, axis=1)
+    # assert(np.all(dot_products>=0.0)) #assert all normals pointed outwards
+
+    return face_normals
+
+
+def get_face_normals_porter(verts, faces, vertex_normals):
+    #get direction to center of each face:
+    face_directions = get_face_midpoints(verts,faces)
+    face_directions /= np.linalg.norm(face_directions, axis=1)[:,np.newaxis]
+
+    # Compute edge vectors for each face
+    edge1 = verts[faces[:,1]] - verts[faces[:,0]]
+    edge2 = verts[faces[:,2]] - verts[faces[:,0]]
+
+    # Compute face normals
+    face_normals = np.cross(edge1, edge2)
+    face_normals /= np.linalg.norm(face_normals, axis=1)[:, np.newaxis]
+
+    reference_normals = vertex_normals[faces[:,0]] #grab the vertex normal from the first of the three vertices
+    # print(reference_normals)
+    # print(np.shape(verts), np.shape(faces), np.shape(vertex_normals))
+    # print(np.shape(faces), np.shape(faces[:,0]))
+    # print(np.shape(reference_normals))
+
+    dot_products = np.sum(face_normals*reference_normals, axis=1)
+    normals_to_flip = np.where(dot_products < 0.0)[0]
+    print(len(normals_to_flip))
+    face_normals[normals_to_flip] *= -1
+
+    # Ensure normal points outward
+    dot_products = np.sum(reference_normals*face_normals, axis=1)
     assert(np.all(dot_products>=0.0)) #assert all normals pointed outwards
 
     return face_normals
+
 
 def get_edges(faces):
     #get all the edges
@@ -131,7 +224,7 @@ def get_faces_on_edge(faces, edges):
 
     return faces_on_edge
 
-def recenter_shape(verts,faces):
+def recenter_shape(verts,faces, align_principal_axes=True):
     #oftentimes .obj files are provided in a non-principal axis aligned and centered format
     #this may not be what we want for dynamics simulations
     #but use this function at your own risk!
@@ -162,33 +255,100 @@ def recenter_shape(verts,faces):
                                          + D[j]*F[k] + D[k]*F[j]
                                          + E[j]*F[k] + E[k]*F[j])
     R = R/V
+    # print('com offset:', R)
     verts -= R #center on center of mass
-    M = rho*V
-    X, Y, Z = R
-    #make inertia tensor:
-    Ixx = np.sum(np.diag(P)) - P[0,0]
-    Iyy = np.sum(np.diag(P)) - P[1,1]
-    Izz = np.sum(np.diag(P)) - P[2,2]
-    Ixy = -P[0,1]
-    Ixz = -P[0,2]
-    Iyz = -P[1,2]
 
-    I = np.array([[Ixx, Ixy, Ixz],
-                  [Ixy, Iyy, Iyz],
-                  [Ixz, Iyz, Izz]])
+    if align_principal_axes:
+        M = rho*V
+        X, Y, Z = R
+        #make inertia tensor:
+        Ixx = np.sum(np.diag(P)) - P[0,0]
+        Iyy = np.sum(np.diag(P)) - P[1,1]
+        Izz = np.sum(np.diag(P)) - P[2,2]
+        Ixy = -P[0,1]
+        Ixz = -P[0,2]
+        Iyz = -P[1,2]
 
-    I -= M*np.array([[Y**2+Z**2, -X*Y, -X*Z],
-                     [-X*Y, X**2+Z**2, -Y*Z],\
-                     [-X*Z, -Y*Z, X**2+Y**2]])
+        I = np.array([[Ixx, Ixy, Ixz],
+                      [Ixy, Iyy, Iyz],
+                      [Ixz, Iyz, Izz]])
 
-    #rotate verts to principal axis alignment
-    eigVal, eigVec = np.linalg.eig(I)
-    order = np.argsort(eigVal)
-    eigVal = eigVal[order]
-    eigVec = eigVec[:,order]
-    verts = np.dot(verts, eigVec)
+        I -= M*np.array([[Y**2+Z**2, -X*Y, -X*Z],
+                         [-X*Y, X**2+Z**2, -Y*Z],\
+                         [-X*Z, -Y*Z, X**2+Y**2]])
+
+        #rotate verts to principal axis alignment
+        eigVal, eigVec = np.linalg.eig(I)
+        order = np.argsort(eigVal)
+        eigVal = eigVal[order]
+        eigVec = eigVec[:,order]
+        verts = np.dot(verts, eigVec)
 
     return verts
+
+def recenter_shape_porter(verts,faces, vertex_normals, align_principal_axes=True):
+    #oftentimes .obj files are provided in a non-principal axis aligned and centered format
+    #this may not be what we want for dynamics simulations
+    #but use this function at your own risk!
+
+
+    rho = 1 #doesn't actually matter, density can be any constant
+    P = np.zeros((3,3))
+    for j in range(0,3):
+        for k in range(0,3):
+            V = 0.0
+            R = np.zeros(3)
+            for i in range(0,len(faces[:,0])):
+                D = verts[faces[i,0]]
+                E = verts[faces[i,1]]
+                F = verts[faces[i,2]]
+
+                G = E-D
+                H = F-D
+                N = np.cross(G,H)
+                dV = np.abs(np.dot(D/3.0,N/2.0))
+
+                dR = (D+E+F)/4.0
+                V += dV
+                R += dV*dR
+
+                P[j,k] += (rho*dV/20.) * (2.*D[j]*D[k] + 2.*E[j]*E[k] + 2.*F[j]*F[k] 
+                                         + D[j]*E[k] + D[k]*E[j] 
+                                         + D[j]*F[k] + D[k]*F[j]
+                                         + E[j]*F[k] + E[k]*F[j])
+    R = R/V
+    # print('com offset:', R)
+    verts -= R #center on center of mass
+
+    if align_principal_axes:
+        M = rho*V
+        X, Y, Z = R
+        #make inertia tensor:
+        Ixx = np.sum(np.diag(P)) - P[0,0]
+        Iyy = np.sum(np.diag(P)) - P[1,1]
+        Izz = np.sum(np.diag(P)) - P[2,2]
+        Ixy = -P[0,1]
+        Ixz = -P[0,2]
+        Iyz = -P[1,2]
+
+        I = np.array([[Ixx, Ixy, Ixz],
+                      [Ixy, Iyy, Iyz],
+                      [Ixz, Iyz, Izz]])
+
+        I -= M*np.array([[Y**2+Z**2, -X*Y, -X*Z],
+                         [-X*Y, X**2+Z**2, -Y*Z],\
+                         [-X*Z, -Y*Z, X**2+Y**2]])
+
+        #rotate verts to principal axis alignment
+        eigVal, eigVec = np.linalg.eig(I)
+        order = np.argsort(eigVal)
+        eigVal = eigVal[order]
+        eigVec = eigVec[:,order]
+        verts = np.dot(verts, eigVec)
+
+        vertex_normals = np.dot(vertex_normals, eigVec)
+
+    return verts, vertex_normals
 
 def polygrav_slow(r_field, sigma, verts, faces, edges, faces_on_edge, G=6.67430e-11):
     #dont use this....
