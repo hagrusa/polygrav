@@ -54,10 +54,10 @@ a_mag = np.linalg.norm(a_net, axis=1)[:, np.newaxis]
 slopes = np.degrees(np.arccos(np.sum(-normals*a_net/a_mag,axis=1)))
 
 
-
+print("maximum slope:", np.max(slopes))
 
 cmap = 'plasma'
-vmax=90
+vmax=75
 norm = mpl.colors.Normalize(vmin=0.0, vmax=vmax)
 mappable = mpl.cm.ScalarMappable(cmap=cmap, norm=norm)
 colors = mpl.colormaps.get_cmap(cmap)(norm(slopes))[:,:3]
@@ -88,7 +88,7 @@ for tick in cbar.get_ticks():
     tickLabels += [r"${0}^{{\circ}}$".format(tick),]
 cbar.set_ticklabels(tickLabels)
 
-
+azim, elev = -140, 20
 ax.view_init(azim=-140.0, elev=20.0)
 
 ax.xaxis.set_major_locator(mpl.ticker.MaxNLocator(5))
@@ -97,11 +97,38 @@ ax.zaxis.set_major_locator(mpl.ticker.MaxNLocator(5))
 
 plt.tight_layout()
 plt.savefig('slopes.png')
-plt.close()
-
-
-
 print("3D surface slope plot saved to slopes.png")
+# plt.close()
+
+
+# a_normal = np.sum(a_net*normals,axis=1) #normal component magnitude
+# a_hor = a_net - a_normal.reshape(-1,1)*normals #subtract off normal component
+# a_hor_norm = a_hor/np.linalg.norm(a_hor,axis=1).reshape(-1,1) #acceleration parallel to surface, normalized
+# nskip = 10
+# arrow_length = 75
+# distance = 1e6  # assume observer is far away 
+# camera_position = np.array([
+#     distance * np.cos(np.radians(elev)) * np.cos(np.radians(azim)),  # X
+#     distance * np.cos(np.radians(elev)) * np.sin(np.radians(azim)),  # Y
+#     distance * np.sin(np.radians(elev))                       # Z
+# ])
+
+# arrow_pos = face_midpoints[::nskip,:]
+# arrow_dir = a_hor_norm[::nskip,:]
+# arrow_dir /= np.linalg.norm(arrow_dir,axis=1).reshape(-1,1)
+# arrow_norms = normals[::nskip,:]
+# arrow_pos += arrow_norms*20
+
+# to_arrows = arrow_pos - camera_position
+# dots = np.sum(arrow_norms*to_arrows, axis=1)
+# visible_arrows = np.where(dots<0.0)[0]
+# x,y,z = arrow_pos[visible_arrows,0], arrow_pos[visible_arrows,1], arrow_pos[visible_arrows,2]
+# u,v,w = arrow_dir[visible_arrows,0], arrow_dir[visible_arrows,1], arrow_dir[visible_arrows,2]
+
+# quiver_plot=ax.quiver(x,y,z,u,v,w, length=arrow_length, normalize=False, color='w')#, zorder=10)
+# plt.savefig('slopes_and_direction.png', dpi=300)
+
+
 
 
 

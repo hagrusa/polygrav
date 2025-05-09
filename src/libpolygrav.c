@@ -150,9 +150,11 @@ void polyGrav(double r_field[3], double verts[][3], int faces[][3], int edges[][
         Vector3D nhat = cross_product(e1, e2); //normal vector
         nhat = scalar_multiply(1./norm(nhat), nhat);
 
-        if (dot_product(nhat, v1) < 0.0) {
-            nhat = scalar_multiply(-1.0, nhat); //ensure pointing outwards
-        }
+        // this was originally done to ensure the normal vector always points 'outwards'
+        // but this will leade to mistakes for concave shapes!
+        // if (dot_product(nhat, v1) < 0.0) {
+        //     nhat = scalar_multiply(-1.0, nhat); //ensure pointing outwards
+        // }
 
         nhat_faces[i] = nhat; //save for later
 

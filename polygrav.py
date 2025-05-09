@@ -283,7 +283,6 @@ def recenter_shape(verts,faces, align_principal_axes=True):
         eigVal = eigVal[order]
         eigVec = eigVec[:,order]
         verts = np.dot(verts, eigVec)
-
     return verts
 
 def recenter_shape_porter(verts,faces, vertex_normals, align_principal_axes=True):
@@ -349,6 +348,69 @@ def recenter_shape_porter(verts,faces, vertex_normals, align_principal_axes=True
         vertex_normals = np.dot(vertex_normals, eigVec)
 
     return verts, vertex_normals
+
+
+def compute_principal_axes(verts, faces):
+    #compute the offset and rotation matrix that would rotate a shape model to principal axis alignment
+
+    rho = 1 #doesn't actually matter, density can be any constant
+    P = np.zeros((3,3))
+    for j in range(0,3):
+        for k in range(0,3):
+            V = 0.0
+            R = np.zeros(3)
+            for i in range(0,len(faces[:,0])):
+                D = verts[faces[i,0]]
+                E = verts[faces[i,1]]
+                F = verts[faces[i,2]]
+
+                G = E-D
+                H = F-D
+                N = np.cross(G,H)
+                dV = np.abs(np.dot(D/3.0,N/2.0))
+
+                dR = (D+E+F)/4.0
+                V += dV
+                R += dV*dR
+
+                P[j,k] += (rho*dV/20.) * (2.*D[j]*D[k] + 2.*E[j]*E[k] + 2.*F[j]*F[k] 
+                                         + D[j]*E[k] + D[k]*E[j] 
+                                         + D[j]*F[k] + D[k]*F[j]
+                                         + E[j]*F[k] + E[k]*F[j])
+    R = R/V
+
+
+    offset = R #want to return this
+
+
+    M = rho*V
+    X, Y, Z = R
+    #make inertia tensor:
+    Ixx = np.sum(np.diag(P)) - P[0,0]
+    Iyy = np.sum(np.diag(P)) - P[1,1]
+    Izz = np.sum(np.diag(P)) - P[2,2]
+    Ixy = -P[0,1]
+    Ixz = -P[0,2]
+    Iyz = -P[1,2]
+
+    I = np.array([[Ixx, Ixy, Ixz],
+                  [Ixy, Iyy, Iyz],
+                  [Ixz, Iyz, Izz]])
+
+    I -= M*np.array([[Y**2+Z**2, -X*Y, -X*Z],
+                     [-X*Y, X**2+Z**2, -Y*Z],\
+                     [-X*Z, -Y*Z, X**2+Y**2]])
+
+    #rotate verts to principal axis alignment
+    eigVal, eigVec = np.linalg.eig(I)
+    order = np.argsort(eigVal)
+    eigVal = eigVal[order]
+    eigVec = eigVec[:,order]
+    # verts = np.dot(verts, eigVec)
+    return offset, eigVec
+
+
+
 
 def polygrav_slow(r_field, sigma, verts, faces, edges, faces_on_edge, G=6.67430e-11):
     #dont use this....
